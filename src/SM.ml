@@ -48,7 +48,7 @@ let rec eval conf prog =
       eval (v :: stack, config) tail
     | BINOP oper -> 
 			let (ls :: rs :: t) = stack in
-      let v = Syntax.Expr.binop oper ls rs in
+      let v = Syntax.Expr.binop oper rs ls in
       eval (v :: t, config) tail
 
 
@@ -78,6 +78,6 @@ let run i p = let (_, (_, _, o)) = eval ([], (Syntax.Expr.empty, i, [])) p in o
 let rec compile st =
   match st with
   | Syntax.Stmt.Assign (v, expr) -> (comp_ex expr) @ [ST v]
-  | Syntax.Stmt.Read v -> [READ] @ [ST v]
+  | Syntax.Stmt.Read v -> [READ; ST v]
   | Syntax.Stmt.Write expr -> (comp_ex expr) @ [WRITE]
   | Syntax.Stmt.Seq (l, r) -> (compile l) @ (compile r)
