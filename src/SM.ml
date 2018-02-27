@@ -3,6 +3,7 @@ open GT
 (* The type for the stack machine instructions *)
 @type insn =
 (* binary operator                 *) | BINOP of string
+(* put a constant on the stack     *) | CONST of int                 
 (* read to stack                   *) | READ
 (* write from stack                *) | WRITE
 (* load a variable to the stack    *) | LD    of string
@@ -23,6 +24,14 @@ type config = int list * Syntax.Stmt.config
    Takes a configuration and a program, and returns a configuration as a result
  *)                         
 let eval _ = failwith "Not yet implemented"
+
+(* Top-level evaluation
+
+     val run : int list -> prg -> int list
+
+   Takes an input stream, a program, and returns an output stream this program calculates
+*)
+let run i p = let (_, (_, _, o)) = eval ([], (Syntax.Expr.empty, i, [])) p in o
 
 (* Stack machine compiler
 
