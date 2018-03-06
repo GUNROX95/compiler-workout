@@ -4,7 +4,7 @@ open Language
 (* The type for the stack machine instructions *)
 @type insn =
 (* binary operator                 *) | BINOP of string
-(* put a constant on the stack     *) | CONST of int                 
+(* put a constant on the stack     *) | CONST of int
 (* read to stack                   *) | READ
 (* write from stack                *) | WRITE
 (* load a variable to the stack    *) | LD    of string
@@ -19,65 +19,53 @@ type prg = insn list
 type config = int list * Stmt.config
 
 (* Stack machine interpreter
-
      val eval : config -> prg -> config
-
    Takes a configuration and a program, and returns a configuration as a result
  *)                         
-(*let eval _ = failwith "Not yet implemented"*)
-let rec eval conf prog =
-  match prog with
-  | [] -> conf
-  | instr :: tail ->
-    let (stack, config) = conf in
-    let (st, i, o) = config in
+let rec eval cfg prg =
+  match prg with
+  | [] -> cfg
+  | instr::prg_t ->
+    let (stack, config) = cfg in
+    let (state, i, o) = config in
     match instr with
-    | CONST c -> 
-			eval (c :: stack, config) tail
+    | BINOP oper ->
+      let (x::y::stack_t) = stack in
+      let expr = Expr.Binop (oper, Expr.Const y, Expr.Const x) in
+      let value = Expr.eval state expr in
+      eval (value::stack_t, config) prg_t
+    | CONST c -> eval (c::stack, config) prg_t
     | READ -> 
-			let (inp :: t) = i in 
-			eval (inp :: stack, config) tail
-    | WRITE ->
-      let (s :: t) = stack in 
-			eval (t, (st, i, o @ [s])) tail
-    | ST v -> 
-			let (s :: t) = stack in
-      let st_up = Syntax.Expr.update v s st in
-      eval (t, (st_up, i, o)) tail
-    | LD var -> 
-			let v = st var in
-      eval (v :: stack, config) tail
-    | BINOP oper -> 
-			let (ls :: rs :: t) = stack in
-      let v = Syntax.Expr.binop oper rs ls in
-      eval (v :: t, config) tail
-
-
-let rec comp_ex ex =
-  match ex with
-  | Syntax.Expr.Const c -> [CONST c]
-  | Syntax.Expr.Var v -> [LD v]
-  | Syntax.Expr.Binop (oper, left, right) -> (comp_ex left) @ (comp_ex right) @ [BINOP oper]
+      let (f::i_t) = i in 
+      eval (f::stack, (state, i_t, o)) prg_t
+    | WRITE -> 
+      let (s::stack_t) = stack in 
+      eval (stack_t, (state, i, o @ [s])) prg_t
+    | LD x -> eval (state x :: stack, config) prg_t
+    | ST x -> 
+      let (s::stack_t) = stack in
+      eval (stack_t, ((Expr.update x s state), i, o)) prg_t
 
 (* Top-level evaluation
-
      val run : prg -> int list -> int list
-
    Takes an input stream, a program, and returns an output stream this program calculates
 *)
 let run p i = let (_, (_, _, o)) = eval ([], (Expr.empty, i, [])) p in o
 
+let rec comp_expr expr = 
+  match expr with
+  | Expr.Const c -> [CONST c]
+  | Expr.Var x -> [LD x]
+  | Expr.Binop (oper, l, r) -> comp_expr l @ comp_expr r @ [BINOP oper]
+
 (* Stack machine compiler
-
      val compile : Language.Stmt.t -> prg
-
    Takes a program in the source language and returns an equivalent program for the
    stack machine
- *)
-
+*)
 let rec compile st =
   match st with
-  | Syntax.Stmt.Assign (v, expr) -> (comp_ex expr) @ [ST v]
-  | Syntax.Stmt.Read v -> [READ; ST v]
-  | Syntax.Stmt.Write expr -> (comp_ex expr) @ [WRITE]
-  | Syntax.Stmt.Seq (l, r) -> (compile l) @ (compile r)
+  | Stmt.Assign (x, e) -> (comp_expr e) @ [ST x]
+  | Stmt.Read x -> [READ] @ [ST x]
+  | Stmt.Write e -> (comp_expr e) @ [WRITE]
+  | Stmt.Seq (l, r) -> (compile l) @ (compile r)
