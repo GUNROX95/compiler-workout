@@ -1,4 +1,5 @@
 open GT       
+open Language
        
 (* The type for the stack machine instructions *)
 @type insn =
@@ -15,7 +16,7 @@ type prg = insn list
 (* The type for the stack machine configuration: a stack and a configuration from statement
    interpreter
  *)
-type config = int list * Syntax.Stmt.config
+type config = int list * Stmt.config
 
 (* Stack machine interpreter
 
@@ -23,22 +24,42 @@ type config = int list * Syntax.Stmt.config
 
    Takes a configuration and a program, and returns a configuration as a result
  *)                         
-let eval _ = failwith "Not yet implemented"
+let rec eval ((stack, ((st, i, o) as c)) as conf) = function
+| [] -> conf
+| insn :: prg' ->
+   eval 
+     (match insn with
+      | BINOP op -> let y::x::stack' = stack in (Expr.to_func op x y :: stack', c)
+      | READ     -> let z::i'        = i     in (z::stack, (st, i', o))
+      | WRITE    -> let z::stack'    = stack in (stack', (st, i, o @ [z]))
+      | CONST i  -> (i::stack, c)
+      | LD x     -> (st x :: stack, c)
+      | ST x     -> let z::stack'    = stack in (stack', (Expr.update x z st, i, o))
+     ) prg'
 
 (* Top-level evaluation
 
-     val run : int list -> prg -> int list
+     val run : prg -> int list -> int list
 
-   Takes an input stream, a program, and returns an output stream this program calculates
+   Takes a program, an input stream, and returns an output stream this program calculates
 *)
-let run i p = let (_, (_, _, o)) = eval ([], (Syntax.Expr.empty, i, [])) p in o
+let run p i = let (_, (_, _, o)) = eval ([], (Expr.empty, i, [])) p in o
 
 (* Stack machine compiler
 
-     val compile : Syntax.Stmt.t -> prg
+     val compile : Language.Stmt.t -> prg
 
    Takes a program in the source language and returns an equivalent program for the
    stack machine
- *)
-
-let compile _ = failwith "Not yet implemented"
+*)
+let rec compile =
+  let rec expr = function
+  | Expr.Var   x          -> [LD x]
+  | Expr.Const n          -> [CONST n]
+  | Expr.Binop (op, x, y) -> expr x @ expr y @ [BINOP op]
+  in
+  function
+  | Stmt.Seq (s1, s2)  -> compile s1 @ compile s2
+  | Stmt.Read x        -> [READ; ST x]
+  | Stmt.Write e       -> expr e @ [WRITE]
+  | Stmt.Assign (x, e) -> expr e @ [ST x]
