@@ -80,7 +80,56 @@ open SM
    Take an environment, a stack machine program, and returns a pair --- the updated environment and the list
    of x86 instructions
 *)
-let compile env code = failwith "Not yet implemented"
+let mov l r =  
+  match l, r with
+  | R _ , _ | _, R _ -> [Mov (l, r)]
+  | _, _ -> [Mov (l, eax); Mov (eax, r)]
+
+let rec comp_binop oper l r = 
+  match oper with
+  | "+" | "-" | "*" -> [Mov (l, eax); Binop (oper, r, eax)], eax
+  | "/" -> [Mov (l, eax); Cltd; IDiv r], eax
+  | "%" -> [Mov (l, eax); Cltd; IDiv r], edx
+  | ">" ->  [Mov (l, edx); Binop ("cmp", r, edx)] @ [Mov (L 0, eax); Set ("g", "%al")],  eax
+  | ">=" -> [Mov (l, edx); Binop ("cmp", r, edx)] @ [Mov (L 0, eax); Set ("ge", "%al")], eax
+  | "<" ->  [Mov (l, edx); Binop ("cmp", r, edx)] @ [Mov (L 0, eax); Set ("l", "%al")],  eax
+  | "<=" -> [Mov (l, edx); Binop ("cmp", r, edx)] @ [Mov (L 0, eax); Set ("le", "%al")], eax
+  | "==" -> [Mov (l, edx); Binop ("cmp", r, edx)] @ [Mov (L 0, eax); Set ("e", "%al")],  eax
+  | "!=" -> [Mov (l, edx); Binop ("cmp", r, edx)] @ [Mov (L 0, eax); Set ("ne", "%al")], eax
+  | "!!" -> [Mov (l, edx); Binop ("!!", r, edx)] @ [Mov (L 0, eax); Set ("nz", "%al")], eax
+  | "&&" -> 
+    let ne_l, reg_l = comp_binop "!=" l (L 0)
+    and ne_r, reg_r = comp_binop "!=" r (L 0) in
+    ne_l @ [Mov (reg_l, l)] @ ne_r @ [Mov (reg_r, r)] @ [Mov (r, edx); Binop ("&&", l, edx)] @ [Mov (L 0, eax); Set ("nz", "%al")], eax
+
+let rec compile env code = 
+  match code with
+  |[] -> env, []
+  |instr::code' ->
+    let env, asm = 
+      match instr with
+      | CONST n ->
+        let s, env = env#allocate in
+        env, [ Mov (L n, s)]
+      | WRITE ->
+        let s, env = env#pop in
+        env, [Push s; Call "Lwrite"; Pop eax]
+      | LD x ->
+        let s, env = (env#global x)#allocate in
+        env, mov (M ("global_" ^ x)) s
+      | ST x ->
+        let s, env = (env#global x)#pop in
+        env, mov s (M ("global_" ^ x))
+      | READ ->
+        let s, env = env#allocate in
+        env, [Call "Lread"; Mov (eax, s)]
+      | BINOP oper ->
+        let r, l, env = env#pop2 in
+        let res, env = env#allocate
+        and asm', acc = comp_binop oper l r in
+        (env, asm' @ (mov acc res)) in
+    let env, asm' = compile env code' in
+    (env, asm @ asm')
 
 (* A set of strings *)           
 module S = Set.Make (String)
